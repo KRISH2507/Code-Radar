@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #0070f3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0051cc;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        .config {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .config strong {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 CORS Configuration Test</h1>
+        <p class="subtitle">Test your CORS and authentication setup</p>
+
+        <div class="config">
+            <strong>Frontend:</strong> <span id="frontendUrl">Loading...</span><br>
+            <strong>Backend:</strong> <span id="backendUrl">http://localhost:8000</span>
+        </div>
+
+        <div>
+            <button onclick="testCORS()">Test CORS</button>
+            <button onclick="testCORSWithCredentials()">Test CORS + Credentials</button>
+            <button onclick="testGoogleAuth()">Test Google OAuth Endpoint</button>
+            <button onclick="testAuthEndpoint()">Test Auth (requires token)</button>
+            <button onclick="clearResults()">Clear</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        // Display frontend URL
+        document.getElementById('frontendUrl').textContent = window.location.origin;
+
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+
+        function showLoading(message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'loading';
+            resultDiv.textContent = message;
+        }
+
+        function clearResults() {
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = '';
+        }
+
+        // Test 1: Basic CORS
+        async function testCORS() {
+            showLoading('Testing basic CORS...');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/cors-test`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const headers = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin') || 'Not set',
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials') || 'Not set',
+                };
+
+                showResult(
+                    `✅ SUCCESS: Basic CORS is working!\n\n` +
+                    `Response:\n${JSON.stringify(data, null, 2)}\n\n` +
+                    `CORS Headers:\n${JSON.stringify(headers, null, 2)}`,
+                    'success'
+                );
+            } catch (error) {
+                showResult(
+                    `❌ ERROR: CORS test failed\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `Possible causes:\n` +
+                    `1. Backend server is not running\n` +
+                    `2. CORS middleware not configured\n` +
+                    `3. Wrong API URL\n\n` +
+                    `Check backend logs for details.`,
+                    'error'
+                );
+            }
+        }
+
+        // Test 2: CORS with Credentials
+        async function testCORSWithCredentials() {
+            showLoading('Testing CORS with credentials...');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/cors-test`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include',  // This is the key!
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const headers = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin') || 'Not set',
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials') || 'Not set',
+                };
+
+                showResult(
+                    `✅ SUCCESS: CORS with credentials is working!\n\n` +
+                    `This means your CORS is properly configured for authentication.\n\n` +
+                    `Response:\n${JSON.stringify(data, null, 2)}\n\n` +
+                    `CORS Headers:\n${JSON.stringify(headers, null, 2)}`,
+                    'success'
+                );
+            } catch (error) {
+                showResult(
+                    `❌ ERROR: CORS with credentials failed\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `This usually means:\n` +
+                    `1. Backend is not sending 'Access-Control-Allow-Credentials: true'\n` +
+                    `2. Backend is using '*' for allowed origins (not allowed with credentials)\n` +
+                    `3. CORS middleware misconfigured\n\n` +
+                    `Fix: Check backend CORS configuration in main.py`,
+                    'error'
+                );
+            }
+        }
+
+        // Test 3: Google OAuth Endpoint
+        async function testGoogleAuth() {
+            showLoading('Testing Google OAuth endpoint availability...');
+            
+            try {
+                // This will fail authentication-wise, but we're checking if CORS allows the request
+                const response = await fetch(`${API_URL}/api/auth/google`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ token: 'test-token' })
+                });
+
+                const data = await response.json();
+
+                if (response.status === 401) {
+                    // Expected - invalid token, but CORS is working!
+                    showResult(
+                        `✅ SUCCESS: Google OAuth endpoint is accessible (CORS working)\n\n` +
+                        `Note: Got 401 Unauthorized as expected (invalid test token)\n` +
+                        `This confirms CORS is not blocking the request.\n\n` +
+                        `Response:\n${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else if (response.ok) {
+                    showResult(
+                        `✅ SUCCESS: Endpoint accessible\n\n` +
+                        `Response:\n${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    showResult(
+                        `⚠️ WARNING: Endpoint returned status ${response.status}\n\n` +
+                        `Response:\n${JSON.stringify(data, null, 2)}`,
+                        'info'
+                    );
+                }
+            } catch (error) {
+                showResult(
+                    `❌ ERROR: Cannot access Google OAuth endpoint\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `This is the original CORS error you were experiencing!\n\n` +
+                    `Fix:\n` +
+                    `1. Ensure backend is running\n` +
+                    `2. Check CORS middleware in backend/app/main.py\n` +
+                    `3. Ensure 'credentials: include' in frontend fetch`,
+                    'error'
+                );
+            }
+        }
+
+        // Test 4: Authenticated Endpoint
+        async function testAuthEndpoint() {
+            showLoading('Testing authenticated endpoint...');
+            
+            const token = localStorage.getItem('access_token');
+            
+            if (!token) {
+                showResult(
+                    `⚠️ INFO: No access token found\n\n` +
+                    `Please login first to test authenticated endpoints.\n\n` +
+                    `To test:\n` +
+                    `1. Go to login page\n` +
+                    `2. Login with email or Google\n` +
+                    `3. Come back and test again`,
+                    'info'
+                );
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/me`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResult(
+                        `✅ SUCCESS: Authentication is working!\n\n` +
+                        `You are logged in as:\n${JSON.stringify(data, null, 2)}\n\n` +
+                        `Token: ${token.substring(0, 30)}...`,
+                        'success'
+                    );
+                } else {
+                    showResult(
+                        `❌ ERROR: Authentication failed\n\n` +
+                        `Status: ${response.status}\n` +
+                        `Response:\n${JSON.stringify(data, null, 2)}\n\n` +
+                        `Token may be expired or invalid.`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult(
+                    `❌ ERROR: Cannot reach auth endpoint\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `CORS is likely blocking the request.`,
+                    'error'
+                );
+            }
+        }
+
+        // Auto-run basic CORS test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testCORS, 500);
+        });
+    </script>
+</body>
+</html>
