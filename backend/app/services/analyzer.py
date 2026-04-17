@@ -233,7 +233,8 @@ def _analyze_file(full_path: str, rel_path: str, language: str) -> FileAnalysisR
             issues.append(CodeIssue(
                 severity="info", issue_type="todo_comment",
                 file_path=rel_path, line_number=lineno,
-                message=f"Unresolved annotation: {stripped[:80]}",
+                # Avoid echoing source content into stored findings.
+                message="Unresolved TODO/FIXME annotation found.",
                 rule="CR005",
             ))
 

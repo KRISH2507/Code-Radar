@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
 logger = logging.getLogger(__name__)
+from app.core.config import settings
 
 
 class RateLimiter:
@@ -111,10 +112,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     # Rate limit configurations
     LIMITS = {
-        "scan": (10, 3600),      # 10 requests per hour
-        "upload": (5, 3600),      # 5 uploads per hour
-        "general": (100, 60),     # 100 requests per minute
-        "unauth": (20, 60),       # 20 requests per minute (unauthenticated)
+        "scan": (settings.RATE_LIMIT_SCAN_PER_HOUR, 3600),
+        "upload": (settings.RATE_LIMIT_UPLOAD_PER_HOUR, 3600),
+        "general": (settings.RATE_LIMIT_GENERAL_PER_MINUTE, 60),
+        "unauth": (settings.RATE_LIMIT_UNAUTH_PER_MINUTE, 60),
     }
     
     def __init__(self, app):

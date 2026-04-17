@@ -91,6 +91,9 @@ def create_github_repository(
             detail="This repository has already been added to your account"
         )
     
+    # Enforce scan limit before creating DB rows to avoid orphaned pending repos
+    check_and_increment_scan(current_user, db)
+
     # Create repository record
     repository = Repository(
         user_id=current_user.id,
@@ -103,9 +106,6 @@ def create_github_repository(
     db.add(repository)
     db.commit()
     db.refresh(repository)
-
-    # Enforce scan limit BEFORE dispatching
-    check_and_increment_scan(current_user, db)
 
     # Dispatch scan in background — response returns immediately
     background_tasks.add_task(_dispatch_scan, repository.id)
@@ -132,11 +132,17 @@ async def create_zip_repository(
     
     Returns the created repository with ID and status.
     """
-    # Validate file type
-    if not file.filename.endswith('.zip'):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only ZIP files are supported"
+        )
+
+    accepted_content_types = {"application/zip", "application/x-zip-compressed", "multipart/form-data"}
+    if file.content_type and file.content_type.lower() not in accepted_content_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported file content type for ZIP upload",
         )
     
     # Read file content
@@ -150,6 +156,9 @@ async def create_zip_repository(
             detail="File size exceeds 100MB limit"
         )
     
+    # Enforce scan limit before creating DB rows to avoid orphaned pending repos
+    check_and_increment_scan(current_user, db)
+
     # Save file to temporary storage
     file_path = repo_service.save_zip_file(file_content, file.filename)
     
@@ -168,9 +177,6 @@ async def create_zip_repository(
     db.add(repository)
     db.commit()
     db.refresh(repository)
-
-    # Enforce scan limit BEFORE dispatching
-    check_and_increment_scan(current_user, db)
 
     # Dispatch scan in background — response returns immediately
     background_tasks.add_task(_dispatch_scan, repository.id)
