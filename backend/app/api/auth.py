@@ -14,18 +14,20 @@ import random
 import traceback
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
-from app.core.jwt import create_access_token, get_current_user
+from app.core.jwt import create_access_token, create_refresh_token, decode_refresh_token, get_current_user
+from app.core.config import settings
 from app.models.user import User
 from app.models.otp import OTP
 from app.schemas.auth import (
     SignupRequest, SignupResponse, LoginRequest,
-    VerifyOTPRequest, GoogleAuthRequest, TokenResponse, UserResponse,
+    VerifyOTPRequest, GoogleAuthRequest, TokenResponse, TokenPairResponse, UserResponse,
     ResendOTPRequest,
+    RefreshTokenRequest,
 )
 from app.services.email_service import send_otp_email
 
@@ -190,8 +192,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 # VERIFY OTP
 # ---------------------------------------------------------------------------
 
-@router.post("/verify-otp", response_model=TokenResponse)
-def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
+@router.post("/verify-otp", response_model=TokenPairResponse)
+def verify_otp(payload: VerifyOTPRequest, response: Response, db: Session = Depends(get_db)):
     try:
         user = db.query(User).filter(User.email == payload.email).first()
         if user is None:
@@ -235,7 +237,18 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
             )
 
         access_token = create_access_token({"user_id": user.id})
-        return TokenResponse(access_token=access_token, token_type="bearer")
+        refresh_token = create_refresh_token({"user_id": user.id})
+        response.set_cookie(
+            key=settings.REFRESH_COOKIE_NAME,
+            value=refresh_token,
+            httponly=True,
+            secure=settings.USE_SECURE_COOKIES,
+            samesite=settings.COOKIE_SAMESITE,
+            domain=settings.COOKIE_DOMAIN,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            path="/",
+        )
+        return TokenPairResponse(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
 
     except HTTPException:
         raise
@@ -253,8 +266,8 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
 # GOOGLE OAUTH
 # ---------------------------------------------------------------------------
 
-@router.post("/google", response_model=TokenResponse)
-def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
+@router.post("/google", response_model=TokenPairResponse)
+def google_auth(payload: GoogleAuthRequest, response: Response, db: Session = Depends(get_db)):
     try:
         # 1. Check server config
         client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
@@ -350,7 +363,18 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
             )
 
         access_token = create_access_token({"user_id": user.id})
-        return TokenResponse(access_token=access_token, token_type="bearer")
+        refresh_token = create_refresh_token({"user_id": user.id})
+        response.set_cookie(
+            key=settings.REFRESH_COOKIE_NAME,
+            value=refresh_token,
+            httponly=True,
+            secure=settings.USE_SECURE_COOKIES,
+            samesite=settings.COOKIE_SAMESITE,
+            domain=settings.COOKIE_DOMAIN,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            path="/",
+        )
+        return TokenPairResponse(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
 
     except HTTPException:
         raise
@@ -412,6 +436,46 @@ def resend_otp(payload: ResendOTPRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Resend OTP failed: {str(exc)}",
         )
+
+
+@router.post("/refresh", response_model=TokenPairResponse)
+def refresh_access_token(
+    payload: RefreshTokenRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    token = payload.refresh_token or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+
+    decoded = decode_refresh_token(token)
+    user_id = decoded.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    new_access_token = create_access_token({"user_id": user.id})
+    new_refresh_token = create_refresh_token({"user_id": user.id})
+    response.set_cookie(
+        key=settings.REFRESH_COOKIE_NAME,
+        value=new_refresh_token,
+        httponly=True,
+        secure=settings.USE_SECURE_COOKIES,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+    )
+
+    return TokenPairResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer",
+    )
 
 
 # ---------------------------------------------------------------------------

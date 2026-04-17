@@ -1,75 +1,86 @@
-import os
 from pathlib import Path
-from typing import Optional
-from dotenv import load_dotenv
+from typing import List, Optional
 
-# Load .env file from backend directory
-env_path = Path(__file__).parent.parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Settings:
-    """
-    Centralized configuration management for Code Radar backend.
-    All settings must come from environment variables.
-    """
-    
-    # Database
+
+class Settings(BaseSettings):
+    """Typed application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).parent.parent.parent / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     DATABASE_URL: str
-    
-    # JWT & Security
-    JWT_SECRET: str
-    
-    # Redis Configuration (optional for local dev)
-    REDIS_URL: Optional[str] = None
-    
-    # Email Service
+    JWT_SECRET: Optional[str] = None
+    SECRET_KEY: Optional[str] = None
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+    JWT_ISSUER: str = "code-radar"
+    JWT_AUDIENCE: str = "code-radar-api"
+    REDIS_URL: str = "redis://localhost:6379/0"
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
+    FRONTEND_URL: Optional[str] = None
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    ENABLE_CORS_TEST_ENDPOINT: bool = True
+    REFRESH_COOKIE_NAME: str = "code_radar_refresh_token"
+    COOKIE_DOMAIN: Optional[str] = None
+    COOKIE_SAMESITE: str = "lax"
+    USE_SECURE_COOKIES: bool = False
+
     EMAILJS_SERVICE_ID: Optional[str] = None
     EMAILJS_TEMPLATE_ID: Optional[str] = None
     EMAILJS_PUBLIC_KEY: Optional[str] = None
     EMAILJS_PRIVATE_KEY: Optional[str] = None
-    
-    # Google OAuth
+
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    
-    def __init__(self):
-        """Load and validate required environment variables."""
-        # Required settings
-        self.DATABASE_URL = self._get_required_env("DATABASE_URL")
-        self.JWT_SECRET = self._get_required_env("JWT_SECRET")
-        
-        # Optional settings — won't crash if missing
-        self.REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self.EMAILJS_SERVICE_ID = os.getenv("EMAILJS_SERVICE_ID")
-        self.EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID")
-        self.EMAILJS_PUBLIC_KEY = os.getenv("EMAILJS_PUBLIC_KEY")
-        self.EMAILJS_PRIVATE_KEY = os.getenv("EMAILJS_PRIVATE_KEY")
-        self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-        self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-        
-        # Validate Redis URL format only if provided
-        if self.REDIS_URL:
-            self._validate_redis_url()
-    
-    def _get_required_env(self, key: str) -> str:
-        """Get required environment variable or raise clear error."""
-        value = os.getenv(key)
-        if not value:
-            raise ValueError(
-                f"Missing required environment variable: {key}\n"
-                f"Please set {key} in your .env file or environment."
-            )
-        return value
-    
-    def _validate_redis_url(self) -> None:
-        """Validate Redis URL format for Redis Cloud compatibility."""
-        if not self.REDIS_URL.startswith(("redis://", "rediss://")):
-            print(
-                f"WARNING: Invalid REDIS_URL format: {self.REDIS_URL}\n"
-                f"Expected format: redis://<PASSWORD>@<HOST>:<PORT>/0\n"
-                f"Redis features will be disabled."
-            )
-            self.REDIS_URL = None
+    GITHUB_CLIENT_ID: Optional[str] = None
+    GITHUB_CLIENT_SECRET: Optional[str] = None
+    GITHUB_APP_ID: Optional[str] = None
+    GITHUB_WEBHOOK_SECRET: Optional[str] = None
 
-# Global settings instance
+    HEALTHCHECK_INCLUDE_REDIS: bool = True
+    RATE_LIMIT_SCAN_PER_HOUR: int = 10
+    RATE_LIMIT_UPLOAD_PER_HOUR: int = 5
+    RATE_LIMIT_GENERAL_PER_MINUTE: int = 100
+    RATE_LIMIT_UNAUTH_PER_MINUTE: int = 20
+
+    @model_validator(mode="after")
+    def ensure_jwt_secret(self) -> "Settings":
+        resolved = (self.JWT_SECRET or self.SECRET_KEY or "").strip()
+        if len(resolved) < 16:
+            raise ValueError("JWT secret must be at least 16 characters long (JWT_SECRET or SECRET_KEY)")
+        self.JWT_SECRET = resolved
+        return self
+
+    @field_validator("COOKIE_SAMESITE")
+    @classmethod
+    def validate_cookie_samesite(cls, value: str) -> str:
+        value_lc = value.lower().strip()
+        if value_lc not in {"lax", "strict", "none"}:
+            raise ValueError("COOKIE_SAMESITE must be one of: lax, strict, none")
+        return value_lc
+
+    @field_validator("REDIS_URL")
+    @classmethod
+    def validate_redis_url(cls, value: str) -> str:
+        if not value.startswith(("redis://", "rediss://")):
+            raise ValueError("REDIS_URL must start with redis:// or rediss://")
+        return value
+
+    @property
+    def allowed_origins(self) -> List[str]:
+        origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        if self.FRONTEND_URL and self.FRONTEND_URL not in origins:
+            origins.append(self.FRONTEND_URL)
+        return origins
+
+
 settings = Settings()

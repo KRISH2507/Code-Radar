@@ -33,9 +33,16 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class TokenPairResponse(TokenResponse):
+    refresh_token: Optional[str] = None
+
 
 class ResendOTPRequest(BaseModel):
     email: EmailStr
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: Optional[str] = None
 
 
 class UserResponse(BaseModel):
